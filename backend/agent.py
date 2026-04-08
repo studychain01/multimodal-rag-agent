@@ -123,7 +123,7 @@ OUTPUT DISCIPLINE (critical — the server runs json.loads on your whole message
 """
 
 # ── agent loop ────────────────────────────────────────────
-MAX_ITERATIONS = 5
+MAX_ITERATIONS = 10
 
 
 def _serialize_assistant_content(content) -> list | str:
