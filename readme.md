@@ -2,6 +2,14 @@
 
 A **multimodal RAG support agent** for the Vulcan OmniPro 220 multiprocess welder. Answers are grounded in the real manuals (owner manual, quick-start, selection charts), retrieved from semantically chunked knowledge, and returned as structured UI blocks: **text**, **manual page images**, **Mermaid diagrams**, **inline SVG**, and **interactive React components**.
 
+### Live demo
+
+**Chat UI (Vercel):** [rag-agent-chatbot — deployed app](https://rag-agent-chatbot-sehaj0918-8096-sehajs-projects-c62a0947.vercel.app/)
+
+The **frontend** is on **Vercel**. The **FastAPI backend** (agent + RAG + manual images) is hosted **separately** — for this project typically **Railway**.
+
+**Expect slower first reply after idle:** on a basic / hobby tier the API process may **scale down or sleep** when nobody is using it, so the **first question after a quiet stretch** can take longer while the server comes back. **Response times** can also feel sluggish compared to a full production setup because the instance runs on **limited CPU and RAM**.
+
 ---
 
 ## Why multimodal?
@@ -183,11 +191,15 @@ Try these in the chat UI **one at a time**. Wording and exact page numbers can d
 
 **Expect:** **text** first, then a **`mermaid`** block with a `diagram` string the client renders as a flowchart.
 
+![Example: Mermaid flowchart in the chat UI](backend/photos/mermaid.jpeg)
+
 ### 3. Inline SVG (`svg`)
 
 **Ask:** *Explain butt vs fillet joints for this welder and include a minimal labeled SVG comparing the two (one `<svg>` with short labels).*
 
 **Expect:** **text** plus an **`svg`** block with `markup` (`<svg>...</svg>`). If you only get text, ask again and insist on an inline SVG after the explanation.
+
+![Example: inline SVG in the chat UI](backend/photos/svg.jpeg)
 
 ### 4. Interactive component (`component`)
 

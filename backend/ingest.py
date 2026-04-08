@@ -1,6 +1,7 @@
 import os
 import json
 import base64
+import logging
 from pathlib import Path
 
 import pymupdf
@@ -9,6 +10,8 @@ import chromadb
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 # ── clients ──────────────────────────────────────────────
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
@@ -233,7 +236,8 @@ def sliding_window_extract(page_nums: list, image_paths: list,
         end = min(start + window_size, len(page_nums))
         window_page_nums = page_nums[start:end]
         window_image_paths = image_paths[start:end]
-        
+        logger.info("%s: sliding-window batch pages %s", source, window_page_nums)
+
         result = extract_multi_page(
             window_page_nums,
             window_image_paths,
@@ -329,6 +333,8 @@ def store_chunks(chunks: list):
     
     if ids:
         collection.add(ids=ids, documents=documents, metadatas=metadatas)
+        src = metadatas[0].get("source", "?") if metadatas else "?"
+        logger.info("Chroma +%d chunk(s) ← %s", len(ids), src)
 
 # ── pdf processing ────────────────────────────────────────
 def convert_pdf_to_images(pdf_path: str, source: str) -> list:
@@ -342,66 +348,90 @@ def convert_pdf_to_images(pdf_path: str, source: str) -> list:
 
     image_paths = []
     doc = pymupdf.open(pdf_path)
+    n = len(doc)
+    logger.info("Rasterize %s → %s (%d pages; MuPDF may warn on tagged PDFs — usually safe)", source, pdf_path, n)
     try:
-        for i in range(len(doc)):
+        for i in range(n):
             page = doc.load_page(i)
             pix = page.get_pixmap(matrix=matrix, alpha=False)
             path = output_dir / f"page_{i+1}.png"
             pix.save(str(path))
             image_paths.append(str(path))
+            p = i + 1
+            if p == 1 or p == n or p % 25 == 0:
+                logger.info("Rasterize %s: page %d/%d", source, p, n)
     finally:
         doc.close()
 
+    logger.info("Rasterize %s: done (%d PNGs)", source, len(image_paths))
     return image_paths
 
 # ── main ingestion loop ───────────────────────────────────
 def ingest_document(source: str, pdf_path: str):
     image_paths = convert_pdf_to_images(pdf_path, source)
     total_pages = len(image_paths)
-    
+    logger.info("Vision pass %s: %d page(s) to process", source, total_pages)
+
     i = 0
     while i < total_pages:
         page_num = i + 1
         image_path = image_paths[i]
-        
+
+        logger.info("%s: page %d/%d — single-page vision", source, page_num, total_pages)
         result = extract_single_page(page_num, image_path, source)
-        
+
         if result["is_complete"]:
             store_chunks(result["chunks"])
             i += 1
-        
+
         else:
             section_page_nums = [page_num]
             section_image_paths = [image_path]
             i += 1
-            
+
             while i < total_pages:
                 next_page_num = i + 1
                 next_image_path = image_paths[i]
-                
+                logger.info(
+                    "%s: page %d/%d — single-page vision (continuation)",
+                    source,
+                    next_page_num,
+                    total_pages,
+                )
                 next_result = extract_single_page(
                     next_page_num, next_image_path, source
                 )
-                
+
                 section_page_nums.append(next_page_num)
                 section_image_paths.append(next_image_path)
                 i += 1
-                
+
                 if next_result["is_complete"]:
                     break
-            
+
             if len(section_page_nums) == 1:
                 store_chunks(result["chunks"])
-            
+
             elif len(section_page_nums) == 2:
+                logger.info(
+                    "%s: pages %s — 2-page merge vision",
+                    source,
+                    section_page_nums,
+                )
                 pair_result = extract_multi_page(
                     section_page_nums,
                     section_image_paths,
                     source
                 )
                 store_chunks(pair_result["chunks"])
-            
+
             else:
+                logger.info(
+                    "%s: pages %s — sliding-window vision (%d pages)",
+                    source,
+                    f"{section_page_nums[0]}–{section_page_nums[-1]}",
+                    len(section_page_nums),
+                )
                 chunks = sliding_window_extract(
                     section_page_nums,
                     section_image_paths,
@@ -409,14 +439,27 @@ def ingest_document(source: str, pdf_path: str):
                 )
                 store_chunks(chunks)
 
+    logger.info("Finished document %s", source)
+
 # ── entry point ───────────────────────────────────────────
 def main():
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s [ingest] %(message)s",
+        datefmt="%H:%M:%S",
+        force=False,
+    )
+    logger.info("Starting ingestion (Chroma may download embedding model on first run)")
     PAGES_DIR.mkdir(parents=True, exist_ok=True)
-    
+
     for source, pdf_path in DOCUMENTS.items():
         if not Path(pdf_path).exists():
+            logger.warning("Skip %s — file missing: %s", source, pdf_path)
             continue
+        logger.info("── Document: %s ← %s ──", source, pdf_path)
         ingest_document(source, pdf_path)
+
+    logger.info("Ingestion complete")
 
 if __name__ == "__main__":
     main()
