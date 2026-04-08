@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react"
+import { API_BASE } from "../apiConfig"
 import MessageList from "./MessageList"
 import ChatInput from "./ChatInput"
 import SuggestedQuestions from "./SuggestedQuestions.jsx"
@@ -29,7 +30,7 @@ export default function ChatInterface() {
     setLoading(true)
 
     try {
-      const response = await fetch("http://localhost:8000/chat", {
+      const response = await fetch(`${API_BASE}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

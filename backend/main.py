@@ -24,10 +24,10 @@ app = FastAPI(title="Vulcan OmniPro 220 Support Agent")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5173",   # vite dev
-        "http://localhost:3000",   # fallback
-        "https://*.vercel.app",    # production
+        "http://localhost:5173",
+        "http://localhost:3000",
     ],
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import { API_BASE } from "../../apiConfig"
 
 export default function ManualImageBlock({ block }) {
   const [imageSrc, setImageSrc] = useState(null)
@@ -12,7 +13,7 @@ export default function ManualImageBlock({ block }) {
         const source = block.source
 
         const response = await fetch(
-          `http://localhost:8000/page/${source}/${page}`
+          `${API_BASE}/page/${source}/${page}`
         )
         const data = await response.json()
         setImageSrc(`data:image/png;base64,${data.data}`)

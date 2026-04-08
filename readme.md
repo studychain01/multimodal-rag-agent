@@ -154,9 +154,16 @@ npm install
 npm run dev
 ```
 
-Open **http://localhost:5173**. The UI posts to **http://localhost:8000** — keep both processes running.
+Open **http://localhost:5173**. By default the UI calls **`http://localhost:8000`** (`frontend/src/apiConfig.js`). To point at a deployed API (e.g. Railway), create **`frontend/.env`** (gitignored):
 
-**Production:** set explicit CORS origins in `main.py` if needed (wildcard subdomains are not always valid in Starlette’s `allow_origins`).
+```bash
+cp frontend/env.sample frontend/.env
+# edit VITE_API_URL in frontend/.env
+```
+
+On **Vercel**, set **`VITE_API_URL`** under Project → Settings → Environment Variables, then redeploy.
+
+**CORS:** `backend/main.py` allows localhost dev origins and **`https://*.vercel.app`** via `allow_origin_regex`.
 
 ---
 

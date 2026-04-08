@@ -1,7 +1,6 @@
 import os
 import json
 import base64
-import logging
 from pathlib import Path
 
 import pymupdf
@@ -10,8 +9,6 @@ import chromadb
 from dotenv import load_dotenv
 
 load_dotenv()
-
-logger = logging.getLogger(__name__)
 
 # ── clients ──────────────────────────────────────────────
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
@@ -237,8 +234,6 @@ def sliding_window_extract(page_nums: list, image_paths: list,
         window_page_nums = page_nums[start:end]
         window_image_paths = image_paths[start:end]
         
-        print(f"  Sliding window: pages {window_page_nums}")
-        
         result = extract_multi_page(
             window_page_nums,
             window_image_paths,
@@ -290,42 +285,10 @@ def build_chunk_text(chunk: dict) -> str:
     return "\n".join(parts).strip()
 
 
-def _clip(s: str, max_len: int) -> str:
-    s = (s or "").strip()
-    if len(s) <= max_len:
-        return s
-    return s[: max_len - 3] + "..."
-
-
-def log_chunk_stored(chunk: dict, chunk_id: str, batch_index: int) -> None:
-    """Log shape and text previews for one chunk as it is written to Chroma."""
-    header = _norm_header(chunk)
-    pages = chunk.get("pages", [])
-    body = _norm_content(chunk)
-    dd = chunk.get("diagram_description") or ""
-    tt = chunk.get("table_text") or ""
-    logger.info(
-        "chunk[%s] id=%s source=%s pages=%s type=%s diagram=%s table=%s",
-        batch_index,
-        chunk_id,
-        chunk.get("source", ""),
-        pages,
-        chunk.get("content_type") or "general",
-        chunk.get("has_diagram", False),
-        chunk.get("has_table", False),
-    )
-    logger.info("  header: %s", _clip(header, 200))
-    logger.info("  content (%s chars): %s", len(body), _clip(body, 600))
-    if dd:
-        logger.info("  diagram_description: %s", _clip(dd, 400))
-    if tt:
-        logger.info("  table_text: %s", _clip(tt, 400))
-
-
 def store_chunks(chunks: list):
     ids, documents, metadatas = [], [], []
     
-    for i, chunk in enumerate(chunks):
+    for chunk in chunks:
         chunk_text = build_chunk_text(chunk)
         
         pages = chunk.get("pages", [])
@@ -363,11 +326,9 @@ def store_chunks(chunks: list):
         ids.append(chunk_id)
         documents.append(chunk_text)
         metadatas.append(metadata)
-        log_chunk_stored(chunk, chunk_id, i)
     
     if ids:
         collection.add(ids=ids, documents=documents, metadatas=metadatas)
-        print(f"  Stored {len(ids)} chunks")
 
 # ── pdf processing ────────────────────────────────────────
 def convert_pdf_to_images(pdf_path: str, source: str) -> list:
@@ -391,15 +352,10 @@ def convert_pdf_to_images(pdf_path: str, source: str) -> list:
     finally:
         doc.close()
 
-    print(f"  Converted {len(image_paths)} pages → {output_dir}")
     return image_paths
 
 # ── main ingestion loop ───────────────────────────────────
 def ingest_document(source: str, pdf_path: str):
-    print(f"\n{'='*50}")
-    print(f"Ingesting: {source}")
-    print(f"{'='*50}")
-    
     image_paths = convert_pdf_to_images(pdf_path, source)
     total_pages = len(image_paths)
     
@@ -408,8 +364,6 @@ def ingest_document(source: str, pdf_path: str):
         page_num = i + 1
         image_path = image_paths[i]
         
-        print(f"\nPage {page_num}/{total_pages}")
-        
         result = extract_single_page(page_num, image_path, source)
         
         if result["is_complete"]:
@@ -417,8 +371,6 @@ def ingest_document(source: str, pdf_path: str):
             i += 1
         
         else:
-            print(f"  Incomplete: {result.get('reason', '')}")
-            
             section_page_nums = [page_num]
             section_image_paths = [image_path]
             i += 1
@@ -427,7 +379,6 @@ def ingest_document(source: str, pdf_path: str):
                 next_page_num = i + 1
                 next_image_path = image_paths[i]
                 
-                print(f"  Probing page {next_page_num}...")
                 next_result = extract_single_page(
                     next_page_num, next_image_path, source
                 )
@@ -439,13 +390,10 @@ def ingest_document(source: str, pdf_path: str):
                 if next_result["is_complete"]:
                     break
             
-            print(f"  Section spans pages: {section_page_nums}")
-            
             if len(section_page_nums) == 1:
                 store_chunks(result["chunks"])
             
             elif len(section_page_nums) == 2:
-                print(f"  Re-extracting as pair...")
                 pair_result = extract_multi_page(
                     section_page_nums,
                     section_image_paths,
@@ -454,36 +402,21 @@ def ingest_document(source: str, pdf_path: str):
                 store_chunks(pair_result["chunks"])
             
             else:
-                print(f"  Using sliding window...")
                 chunks = sliding_window_extract(
                     section_page_nums,
                     section_image_paths,
                     source
                 )
                 store_chunks(chunks)
-    
-    print(f"\nDone: {source}")
 
 # ── entry point ───────────────────────────────────────────
 def main():
     PAGES_DIR.mkdir(parents=True, exist_ok=True)
     
-    print("Starting ingestion...")
-    print(f"Collection: {collection.name}")
-    
     for source, pdf_path in DOCUMENTS.items():
         if not Path(pdf_path).exists():
-            print(f"WARNING: {pdf_path} not found, skipping")
             continue
         ingest_document(source, pdf_path)
-    
-    count = collection.count()
-    print(f"\nIngestion complete. Total chunks: {count}")
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
-        datefmt="%H:%M:%S",
-    )
     main()
