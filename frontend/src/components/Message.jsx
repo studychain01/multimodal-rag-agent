@@ -1,4 +1,4 @@
-import BlockRenderer from "./BlockRenderer"
+import BlockRenderer from "./blockRenderer.jsx"
 
 export default function Message({ message }) {
   if (message.role === "user") {

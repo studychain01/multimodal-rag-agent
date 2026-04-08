@@ -21,12 +21,22 @@ logging.basicConfig(
 app = FastAPI(title="Vulcan OmniPro 220 Support Agent")
 
 # ── CORS ──────────────────────────────────────────────────
+# Local: include 127.0.0.1 — browsers treat it as a different origin than "localhost".
+# Optional: set CORS_ORIGINS="https://app.example.com,https://other.com" (comma-separated).
+_cors_base = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+_cors_extra = os.getenv("CORS_ORIGINS", "")
+if _cors_extra.strip():
+    _cors_base.extend(o.strip() for o in _cors_extra.split(",") if o.strip())
+_cors_allow_origins = list(dict.fromkeys(_cors_base))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:3000",
-    ],
+    allow_origins=_cors_allow_origins,
     allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
